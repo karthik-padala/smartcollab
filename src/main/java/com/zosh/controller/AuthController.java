@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,6 +28,8 @@ import com.zosh.request.LoginRequest;
 import com.zosh.response.AuthResponse;
 import com.zosh.service.CustomeUserServiceImplementation;
 import com.zosh.service.UserService;
+
+import java.util.List;
 
 
 @RestController
@@ -57,16 +61,14 @@ public class AuthController {
 		String email = user.getEmail();
 		String password = user.getPassword();
 		String fullName = user.getFullName();
-		String role=user.getRole();
+		String role = user.getRole();
 
 		User isEmailExist = userRepository.findByEmail(email);
-
-		if (isEmailExist!=null) {
-
+		if (isEmailExist != null) {
 			throw new UserException("Email Is Already Used With Another Account");
 		}
 
-		// Create new user
+		// 1. Create and Save User
 		User createdUser = new User();
 		createdUser.setEmail(email);
 		createdUser.setFullName(fullName);
@@ -75,20 +77,29 @@ public class AuthController {
 
 		User savedUser = userRepository.save(createdUser);
 
-		Subscription subscription = subscriptionService.createSubscription(savedUser);
+		// 2. Create Subscription
+		subscriptionService.createSubscription(savedUser);
 
-//		subscriptionRepository.save(subscription);
+		// 3. Setup Authorities and Authentication
+		List<GrantedAuthority> authorities = AuthorityUtils.createAuthorityList(savedUser.getRole());
 
-		Authentication authentication = new UsernamePasswordAuthenticationToken(email, password);
+		// Use the constructor with authorities to properly authenticate the session
+		Authentication authentication = new UsernamePasswordAuthenticationToken(
+				savedUser.getEmail(),
+				null,
+				authorities
+		);
+
 		SecurityContextHolder.getContext().setAuthentication(authentication);
 
+		// 4. Generate Token and Response
 		String token = JwtProvider.generateToken(authentication);
 
 		AuthResponse authResponse = new AuthResponse();
 		authResponse.setJwt(token);
 		authResponse.setMessage("Register Success");
 
-		return new ResponseEntity<AuthResponse>(authResponse, HttpStatus.OK);
+		return new ResponseEntity<>(authResponse, HttpStatus.OK);
 
 	}
 
